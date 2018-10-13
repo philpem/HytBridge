@@ -21,13 +21,13 @@ class TxCallStatus(Enum):       # Only used by B845 (Broadcast status report), w
     STARTGROUP  = 0      # Start of group call voice traffic
     ENDGROUP    = 1      # End of group call voice traffic (doesn't end the call)
 
-    ENDCALL    = 4      # End of a call (cleardown)                       -- RU or RPTR initiated
+    ENDCALL     = 4      # End of a call (cleardown)                       -- RU or RPTR initiated
 
-    #TMP_5       = 5
+    PERIODIC    = 5      # Periodic (~every minute) update / last call
 
-    UNKNOWN6   = 6      # Start private call + voice (RPTR initiated)
-    UNKNOWN7   = 7      # End private call (2/2) (RPTR initiated?)
-    UNKNOWN8   = 8      # End private call (1/2) (RPTR initiated?)
+    UNKNOWN6    = 6      # Start private call + voice (RPTR initiated)
+    UNKNOWN7    = 7      # End private call (2/2) (RPTR initiated?)
+    UNKNOWN8    = 8      # End private call (1/2) (RPTR initiated?)
 
     #TMP_START   = 9     # Text message start?
 
