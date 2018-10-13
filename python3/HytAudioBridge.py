@@ -42,14 +42,15 @@ logger = logging.getLogger('AudioBridge')
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
 
 # create file handler which logs even debug messages
 fh = logging.FileHandler('tracer.log')
 fh.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger.addHandler(ch)
-ch.setFormatter(formatter)
+logger.addHandler(fh)
 
 # Bei STRG+C beenden:
 def signal_handler(signal, frame):
@@ -109,8 +110,17 @@ class AudioSlot:
     return self.RCP_Seq
 
   def sendACK(self, seq):
+    # TODO use struct.pack
     AckPacket = bytearray.fromhex('324200010100')
-    AckPacket[5] = seq;
+    AckPacket[4] = seq & 0xFF;
+    AckPacket[5] = (seq >> 8) & 0xFF
+    self.RCP_Sock.sendto(AckPacket, (self.RptIP, self.RCP_Port))
+
+  def sendSYNACK(self, seq):
+    # TODO use struct.pack
+    AckPacket = bytearray.fromhex('324200050100')
+    AckPacket[4] = seq & 0xFF;
+    AckPacket[5] = (seq >> 8) & 0xFF
     self.RCP_Sock.sendto(AckPacket, (self.RptIP, self.RCP_Port))
 
   def sendCallSetup(self, CallType, DstId):
@@ -165,14 +175,16 @@ class AudioSlot:
         if isinstance(p, ADK.HytPacket_QSO):
           # QSO-Data packet
           logger.debug("(%s) QSOData: %s" % (threadName, str(p)))
-          self.sendACK(p.seqid & 0xFF)   # FIXME ack
-          if p.seqid > 0xFF:
-            logger.warning("(%s) QSOData seq > 255, is %d; masked" % (threadName, str(p.seqid)))
+          self.sendACK(p.seqid)   # FIXME ack
         elif isinstance(p, ADK.HytPacket_KeepAlive):
           # Keepalive
           # TODO 'if LogKeepalives'
           #logger.debug("(%s) Keepalive acked" % threadName)
           self.sendACK(p.seqid)
+        elif isinstance(p, ADK.HytPacket_Syn):
+          logger.debug("(%s) Announce acknowledged -- %s" % (threadName, str(p)))
+          p.seqid = 0             # FIXME set seqid to the same as the SYN's seqid
+          self.sendSYNACK(p.seqid)
         else:
           logger.debug("(%s) Packet -- %s" % (threadName, str(p)))
       except ADK.DataError as e:
