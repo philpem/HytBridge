@@ -12,13 +12,17 @@ import sys
 import audioop
 import wave
 
+import logging
+
+import ADK
+
 # IP-Adresse vom Repeater:
 #LOCAL_IP = "127.0.0.1"
 #RPT_IP = "127.0.0.1"
 #LOCAL_IP = "192.168.0.115"
 #RPT_IP = "192.168.0.201"
-LOCAL_IP = "192.168.4.10"
-RPT_IP = "192.168.4.32"
+LOCAL_IP = "10.0.0.230"
+RPT_IP = "10.0.0.96"
 
 # UDP-Ports für die Steuerung:
 RCP_PORT_TS1 = 30009
@@ -29,10 +33,23 @@ RTP_PORT_TS1 = 30012
 RTP_PORT_TS2 = 30014
 
 # Wave file output path:
-WAVE_PATH = './'
+WAVE_PATH = './recording/'
 
 # Maximum seconds per wave file:
-MAX_SEC_PER_WAVEFILE = 300
+MAX_SEC_PER_WAVEFILE = 3600
+
+logger = logging.getLogger('AudioBridge')
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+# create file handler which logs even debug messages
+fh = logging.FileHandler('tracer.log')
+fh.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger.addHandler(ch)
+ch.setFormatter(formatter)
 
 # Bei STRG+C beenden:
 def signal_handler(signal, frame):
@@ -41,21 +58,6 @@ def signal_handler(signal, frame):
   AudioSlot2.flushWave()
   sys.exit(0)
 
-def decodeCallType(ct):
-  CallTypeList = ["Pvt", "Grp", "All"]
-  if ct >= 0 and ct < len(CallTypeList):
-    return CallTypeList[ct]
-  return "invalid"
-
-def isQSOData(data):
-  return len(data) == 38 and data[0] == 0x32 and data[1] == 0x42 and data[2] == 0x00 and data[3] == 0x20
-
-def printQSOData(threadName, data):
-  RptId = int("%02X%02X%02X" % (data[9], data[10], data[11]), 16)
-  CT = decodeCallType(data[26])
-  DstId = int("%02X%02X%02X" % (data[30], data[29], data[28]), 16)
-  SrcId = int("%02X%02X%02X" % (data[34], data[33], data[32]), 16)
-  print(threadName, ":", CT, "call from", SrcId, "to", DstId, "via", RptId)
 
 # Klasse, die sich um das Audio (RCP+RTP) für einen Timeslot kümmert.
 class AudioSlot:
@@ -157,10 +159,25 @@ class AudioSlot:
     #print(threadName, "RCP_Rx_Thread started")
     while True:
       data, addr = self.RCP_Sock.recvfrom(1024)
-      #print(threadName, "RCP_Rx_Thread: received message:", data)
-      if isQSOData(data):
-        self.sendACK(data[5])
-        printQSOData(threadName, data)
+      #logger.debug("%s %s %s" % (threadName, "RCP_Rx_Thread: received message:", data))
+      try:
+        p = ADK.HytPacket.factory(data)
+        if isinstance(p, ADK.HytPacket_QSO):
+          # QSO-Data packet
+          logger.debug("(%s) QSOData: %s" % (threadName, str(p)))
+          self.sendACK(p.seqid & 0xFF)   # FIXME ack
+          if p.seqid > 0xFF:
+            logger.warning("(%s) QSOData seq > 255, is %d; masked" % (threadName, str(p.seqid)))
+        elif isinstance(p, ADK.HytPacket_KeepAlive):
+          # Keepalive
+          # TODO 'if LogKeepalives'
+          #logger.debug("(%s) Keepalive acked" % threadName)
+          self.sendACK(p.seqid)
+        else:
+          logger.debug("(%s) Packet -- %s" % (threadName, str(p)))
+      except ADK.DataError as e:
+        logger.error("(%s) DataError: %s" % (threadName, str(e)))
+
 
   def RTP_Rx_Thread(self, threadName):
     #print(threadName, "RTP_Rx_Thread started")
