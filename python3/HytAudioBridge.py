@@ -48,6 +48,7 @@ ch.setFormatter(formatter)
 # create file handler which logs even debug messages
 fh = logging.FileHandler('tracer.log')
 fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
 
 logger.addHandler(ch)
 logger.addHandler(fh)
