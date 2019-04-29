@@ -16,8 +16,43 @@ class CallType(Enum):           # ADKCoreEngine_CLR/CallType.cs
     PRIORITY_GROUP      = 6
     PRIORITY_ALL        = 7
 
+class ProcessType(Enum):
+    UNAVAILABLE         = 0
+    VOICE_TX_OR_RX      = 1
+    HANG_TIME           = 2
+    CALL_END            = 3
+    CALL_FAIL           = 4
+    TOT                 = 5
+    TOT_PRE_ALERT       = 6
+    EMERGENCY_ALARM_TX  = 7
+    EMERGENCY_STAY      = 8
+    EMERGENCY_CALL_TX   = 9
+    EMERGENCY_END       = 10
+
+
+class TxCallMode(Enum):
+    NORMAL = 0
+    SELECTIVE = 1
 
 class TxCallStatus(Enum):       # Only used by B845 (Broadcast status report), which ADK doesn't seem to use
+    LOCAL_REPEATING = 0
+    LOCAL_HANG_TIME = 1
+    IP_REPEATING = 2
+    IP_HANG_TIME = 3
+    CHANNEL_HANG_TIME = 4
+    SLEEP = 5
+    REMOTE_PTT_TX = 6
+    REMOTE_PTT_HANG_TIME = 7
+    REMOTE_PTT_TX_END = 8
+    REMOTE_PTT_WAIT_ACK = 9
+    REMOTE_PTT_TOT = 10
+    LOCAL_PTT_TX = 11
+    LOCAL_PTT_HANG_TIME = 12
+    LOCAL_PTT_TX_END = 13
+    LOCAL_PTT_WAIT_ACK = 14
+    LOCAL_PTT_TOT = 15
+
+    """
     STARTGROUP  = 0      # Start of group call voice traffic
     ENDGROUP    = 1      # End of group call voice traffic (doesn't end the call)
 
@@ -30,6 +65,16 @@ class TxCallStatus(Enum):       # Only used by B845 (Broadcast status report), w
     UNKNOWN8    = 8      # End private call (1/2) (RPTR initiated?)
 
     #TMP_START   = 9     # Text message start?
+    """
+
+class TxServiceType(Enum):
+    NONE = 0
+    VOICE = 1
+    TMP = 2
+    LP = 3
+    RRS = 4
+    TP = 5
+    SUPPLEMENTARY = 6
 
 
 class PTTTarget(Enum):
@@ -322,6 +367,7 @@ class HytPacket_QSO(HytPacket):
             elif self.opcode2 == 0xB843:
                 # Transmit status
                 # [0]: either 0x01 or 0x03 -- 0x01 seen with Front PTT down (dispatch initiated), 0x03 seen at end of call
+                self.process = ProcessType(self.process)
                 # [1..5]: always 0x00
                 (self.process,self.source,self.callType) = struct.unpack('<HHH', self.payload2[0:6])
                 self.callType = CallType(self.callType)
@@ -331,18 +377,19 @@ class HytPacket_QSO(HytPacket):
             # 0xB844 is Receive Status but I've never seen it in a trace
 
             elif self.opcode2 == 0xB845:
-                # Repeater broadcasting transmit status (RCP_BROADCAST_STATUS_REPORT) -- ADK doesn't decode this
+                # Repeater broadcasting transmit status (RCP_BROADCAST_STATUS_REPORT)
                 #
                 # [0..1]: (mode)     always 0x00       (mode)
+                #       0: Normal, 1: Selective
                 # [2..3]: (status)   seen 0x06 (in call) and 0x08,0x01,0x04 sequence (end of call) -- 0x04 seems to signify Cleardown
-                # [4..5]: (service type)   always 1? (voice)
+                # [4..5]: (typr)   always 1? (voice)
                 (self.mode, self.status, self.serviceType) = struct.unpack('<HHH', self.payload2[0:6])
-                try:
-                    self.status = TxCallStatus(self.status)
-                except ValueError:
-                    # TODO: Log that we've seen a status code we don't recognise
-                    logger.warning("Unknown call status %d" % self.status)
-                    pass
+                # repeater mode
+                self.mode = TxCallMode(self.mode)
+                # repeater status
+                self.status = TxCallStatus(self.status)
+                # repeater service type
+                self.serviceType = TxServiceType(self.serviceType)
                 # call type
                 self.callType = CallType(struct.unpack('<H', self.payload2[6:8])[0])
                 # destination ID
